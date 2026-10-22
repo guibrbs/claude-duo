@@ -1,6 +1,6 @@
 ---
 name: duo-send
-description: Talks to the Claude Duo account and hands it tasks (the second Claude Code account of this Mac, CLAUDE_CONFIG_DIR=~/.claude-duo) through duo/duo-send.py — synchronously, returning its answer like a subagent on the other account, or as a background session (--bg) that the user follows with `duo-send.py agents` and `attach`. Use for "send this to the Duo", "ask the Duo to…", "message the session X in the Duo", "tell the Duo session to…", "open a session on the other account", "let the Duo work on it in the background", or when this account's usage is running out and the work can go on in the Duo. Not for review rounds between the two accounts (that is loop-duo) and not from a session that already runs on the Duo account.
+description: Talks to the Claude Duo account and hands it tasks (the second Claude Code account of this Mac, CLAUDE_CONFIG_DIR=~/.claude-duo) through duo/duo-send.py — synchronously, returning its answer like a subagent on the other account, or as a background session (--bg) that the user follows with `duo-send.py agents` and `attach`. Use for "send this to the Duo", "ask the Duo to…", "message the session X in the Duo", "tell the Duo session to…", "open a session on the other account", "give it to the Duo inbox", "do it in the Duo where I can see", "let the Duo work on it in the background", or when this account's usage is running out and the work can go on in the Duo. Not for review rounds between the two accounts (that is loop-duo) and not from a session that already runs on the Duo account.
 ---
 
 # duo-send
@@ -72,6 +72,32 @@ TASK
   tell the user to run `duo/install-duo.sh --links` from an up-to-date
   checkout, which rebuilds the Duo and quits and reopens both apps; do not run
   it or edit the config yourself.
+
+## Hand a task to the Duo inbox (visible in the Duo window)
+
+The Duo inbox is a session in the Claude Duo window that runs /duo-inbox: it
+takes tasks by message, does them where the user can watch and step in, and
+reports back to you. Prefer it to `send` when the user wants to see or follow
+the work in the Duo. One inbox per folder.
+
+1. Find it right before sending (the address changes when it restarts):
+
+   ```bash
+   /usr/bin/python3 -I ~/.local/share/claude-duo/duo-send.py inbox --repo /path/to/repo
+   ```
+
+   If it says no inbox is open, run it again with `--open`. That opens a session
+   in the Duo window with `/duo-inbox` filled in. Ask the user to press Enter
+   there, then look the address up again.
+2. Show the user the brief and wait for their OK. Then `SendMessage` with `to`
+   set to that address, the first line `duo-inbox task: <short title>`, and the
+   full brief below it. The inbox has none of this conversation.
+3. Its messages come back to this session:
+   - `duo-inbox queued: …`: it is busy and will take yours next;
+   - `duo-inbox question: …`: answer with `SendMessage` to its `from`;
+   - `duo-inbox report: … — done | blocked | refused`: relay it to the user.
+   Nothing to poll. If this session closes first, the report stays in the Duo
+   window.
 
 ## Talk to a session already open in the Duo app
 

@@ -82,11 +82,15 @@ if [ -f "$config" ] && [ ! -L "$config" ]; then
 fi
 
 items=("$DUO_APP" "$UPDATER_APP" "$LEGACY_UPDATER_APP" "$AGENT" "$DUO_HOME" "$config" "$DUO_LOG_DIR")
-# The duo-send skill, only the copy the installer put there (never a symlink or the user's own).
-skill_dir="$HOME/.claude/skills/duo-send"
-if [ -d "$skill_dir" ] && [ ! -L "$skill_dir" ] && /usr/bin/grep -qxF '<!-- claude-duo: installed by duo/install-duo.sh, which updates it; uninstall-duo.sh removes it -->' "$skill_dir/SKILL.md" 2>/dev/null; then
-    items+=("$skill_dir")
-fi
+# The skills, only the copies the installer put there (never a symlink or the user's own).
+skill_dirs=("$HOME/.claude/skills/duo-send" "$HOME/.claude/skills/duo-inbox" "$HOME/.claude-duo/skills/duo-inbox")
+for code in "${account_dirs[@]-}"; do [ -z "$code" ] || skill_dirs+=("$code/skills/duo-inbox"); done
+for skill_dir in "${skill_dirs[@]}"; do
+    [ -d "$skill_dir" ] && [ ! -L "$skill_dir" ] && /usr/bin/grep -qxF '<!-- claude-duo: installed by duo/install-duo.sh, which updates it; uninstall-duo.sh removes it -->' "$skill_dir/SKILL.md" 2>/dev/null || continue
+    real="$(cd "$skill_dir" && pwd -P)" || continue
+    case " ${skill_reals:-} " in *" $real "*) continue ;; esac
+    skill_reals="${skill_reals:-} $real"; items+=("$skill_dir")
+done
 if [ "$others" = no ]; then
     items+=("$TOOLSET")
     for txn in "$HOME/Applications"/.claude-txn.*; do items+=("$txn"); done

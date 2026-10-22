@@ -98,6 +98,11 @@ profile, not in the Duo window. After `duo/install-duo.sh --links`:
 
 How to turn it on and how it works: [DUO_VISIBLE_SESSION.md](DUO_VISIBLE_SESSION.md).
 
+## Handing work to a visible Duo session: the inbox
+
+To have the work happen in the Duo window, not in `-p` or `--bg`, send it to
+the Duo inbox: [DUO_INBOX.md](DUO_INBOX.md).
+
 ## Talking to a session already open in the Duo app
 
 Sessions of the same account talk with `ListAgents` and `SendMessage`. Each
