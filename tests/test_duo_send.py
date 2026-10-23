@@ -275,6 +275,20 @@ class DuoOpenTests(unittest.TestCase):
         self.assertEqual((scheme, where), ("claude-dev", "code/new"))
         self.assertEqual(query, {"folder": str(self.repo), "q": "fix the tests & push? no", "source": "duo-send"})
 
+    def test_open_reads_a_brief_with_quotes_and_backticks_from_stdin(self):
+        brief = "Fix `make test` in the \"api\" folder.\nDone when CI is green; don't push to main."
+        with mock.patch.object(self.module.sys, "stdin", io.StringIO(brief)):
+            code, _, _ = self.main("open", "--repo", str(self.repo), "--prompt", "-")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.link()[2]["q"], brief)
+
+    def test_inbox_open_fills_in_duo_inbox_in_a_new_duo_session(self):
+        code, out, _ = self.main("inbox", "--open", "--repo", str(self.repo))
+        self.assertEqual(code, 0)
+        self.assertIn("press Enter there to send /duo-inbox", out)
+        self.assertEqual(self.link(), ("claude-dev", "code/new",
+                                       {"folder": str(self.repo), "q": "/duo-inbox", "source": "duo-send"}))
+
     def test_open_imports_a_session_by_its_uuid(self):
         session = "0f8fad5b-d9cb-469f-a165-70867728950e"
         self.assertEqual(self.main("open", "--session", session)[0], 0)
@@ -339,16 +353,57 @@ class DuoSessionsTests(unittest.TestCase):
         self.sockets.append(path)
         return str(path)
 
-    def entry(self, name, *, pid=None, sock=None, status="idle", file=None):
+    def entry(self, name, *, pid=None, sock=None, status="idle", file=None, cwd="/x", registry=None):
         data = {"pid": pid or os.getpid(), "name": name, "status": status, "kind": "interactive",
-                "sessionId": "0f8fad5b-d9cb-469f-a165-70867728950e", "cwd": "/x",
+                "sessionId": "0f8fad5b-d9cb-469f-a165-70867728950e", "cwd": cwd,
                 "messagingSocketPath": sock if sock is not None else self.live_socket()}
-        (self.registry / (file or f"{len(list(self.registry.iterdir()))}.json")).write_text(json.dumps(data))
+        folder = registry or self.registry
+        (folder / (file or f"{len(list(folder.iterdir()))}.json")).write_text(json.dumps(data))
         return data
 
+    def run_tool(self, *args):
+        return subprocess.run([sys.executable, "-I", str(SCRIPT), *args], capture_output=True, text=True,
+                              env=self.env, timeout=60)
+
+    def test_inbox_is_the_one_duo_inbox_session_in_that_folder(self):
+        repo, other = self.home / "repo", self.home / "other"
+        repo.mkdir(), other.mkdir()
+        inbox = self.entry("[repo] Duo inbox", cwd=str(repo))
+        self.entry("[other] Duo inbox", cwd=str(other))
+        self.entry("[repo] Something else", cwd=str(repo))
+        found = self.run_tool("inbox", "--repo", str(repo))
+        self.assertEqual((found.returncode, found.stdout.strip()), (0, "uds:" + inbox["messagingSocketPath"]))
+        self.entry("[repo] Duo inbox (2)", cwd=str(repo))
+        two = self.run_tool("inbox", "--repo", str(repo))
+        self.assertEqual(two.returncode, 1)
+        self.assertIn("more than one Duo inbox", two.stderr)
+
+    def test_no_inbox_names_the_command_that_opens_one(self):
+        repo = self.home / "repo"
+        repo.mkdir()
+        self.entry("[repo] Duo inbox", cwd=str(repo), pid=2 ** 22 + 7, sock="/tmp/cc-socks/1.sock")  # gone
+        none = self.run_tool("inbox", "--repo", str(repo))
+        self.assertEqual(none.returncode, 1)
+        self.assertIn(f"duo-send.py inbox --open --repo {repo}", none.stderr)
+
+    def test_whois_tells_which_account_answers_on_an_address(self):
+        duo = self.entry("[repo] Duo inbox")
+        original = self.entry("Valete V2 - Orquestrador", registry=self.home / ".claude/sessions")
+        for data, account in ((duo, "duo"), (original, "original")):
+            with self.subTest(account=account):
+                found = self.run_tool("whois", "uds:" + data["messagingSocketPath"], "--json")
+                self.assertEqual(found.returncode, 0, found.stderr)
+                self.assertEqual((json.loads(found.stdout)["account"], json.loads(found.stdout)["name"]),
+                                 (account, data["name"]))
+        for address, error in (("uds:/tmp/cc-socks/999999998.sock", "no live session"),
+                               ("uds:/etc/passwd", "not a session address")):
+            with self.subTest(address=address):
+                process = self.run_tool("whois", address)
+                self.assertEqual(process.returncode, 1)
+                self.assertIn(error, process.stderr)
+
     def run_sessions(self, *args):
-        return subprocess.run([sys.executable, "-I", str(SCRIPT), "sessions", *args], capture_output=True,
-                              text=True, env=self.env, timeout=60)
+        return self.run_tool("sessions", *args)
 
     def test_lists_live_duo_sessions_with_their_address(self):
         live = self.entry("[proj] Valete · telas", status="busy")

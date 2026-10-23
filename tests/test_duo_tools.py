@@ -303,8 +303,9 @@ class DuoToolsTests(unittest.TestCase):
         shutil.copyfile(REPO / "scripts/share-code-profile.py", checkout / "scripts/share-code-profile.py")
         for name in ("duo-send.py", "loop-duo.py"):
             shutil.copyfile(REPO / "duo" / name, checkout / "duo" / name)
-        (checkout / "duo/skills/duo-send").mkdir(parents=True)
-        shutil.copyfile(REPO / "duo/skills/duo-send/SKILL.md", checkout / "duo/skills/duo-send/SKILL.md")
+        for skill in ("duo-send", "duo-inbox"):
+            (checkout / "duo/skills" / skill).mkdir(parents=True)
+            shutil.copyfile(REPO / "duo/skills" / skill / "SKILL.md", checkout / "duo/skills" / skill / "SKILL.md")
         for name in ("duo-common.sh", "update-duo.sh", "check-update.sh"):
             self.install_patched(REPO / "duo" / name, checkout / "duo" / name)
         code = self.patch((REPO / "duo/install-duo.sh").read_text())
@@ -386,6 +387,26 @@ class DuoToolsTests(unittest.TestCase):
         self.assertEqual(self.run_installer(installer, "--no-build", "--no-auto-check").returncode, 0)
         self.assertEqual(skill.read_bytes(), (REPO / "duo/skills/duo-send/SKILL.md").read_bytes())
 
+    def test_installer_gives_the_duo_the_duo_inbox_skill(self):
+        installer = self.installer_fixture()
+        result = self.run_installer(installer, "--no-build", "--no-auto-check")
+        self.assertIn("Skipped duo-inbox", result.stdout)  # The Duo never opened Code yet.
+        (self.home / ".claude-duo").mkdir()
+        result = self.run_installer(installer, "--no-build", "--no-auto-check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        inbox = self.home / ".claude-duo/skills/duo-inbox/SKILL.md"
+        self.assertEqual(inbox.read_bytes(), (REPO / "duo/skills/duo-inbox/SKILL.md").read_bytes())
+        self.assertFalse((self.home / ".claude/skills/duo-inbox").exists())
+
+    def test_installer_follows_the_duo_code_folder_of_the_config(self):
+        installer = self.installer_fixture()
+        self.assertEqual(self.run_installer(installer, "--no-build", "--no-auto-check").returncode, 0)
+        config = self.home / ".config/claude-instances/claude-duo.conf"
+        config.write_text(config.read_text().replace("CLAUDE_CONFIG_DIR=~/.claude-duo", "CLAUDE_CONFIG_DIR=~/code-duo"))
+        (self.home / "code-duo").mkdir()
+        self.assertEqual(self.run_installer(installer, "--no-build", "--no-auto-check").returncode, 0)
+        self.assertTrue((self.home / "code-duo/skills/duo-inbox/SKILL.md").exists())
+
     def test_installer_keeps_a_skill_of_the_user_and_honors_no_skill(self):
         installer = self.installer_fixture()
         skills = self.home / ".claude/skills"
@@ -411,7 +432,7 @@ class DuoToolsTests(unittest.TestCase):
         installer = self.installer_fixture()
         result = self.run_installer(installer, "--no-build", "--no-auto-check")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("no Code folder", result.stdout)
+        self.assertIn(f"Skipped duo-send: {self.home / '.claude'} does not exist yet", result.stdout)
         self.assertFalse((self.home / ".claude").exists())
 
     def test_installer_reuses_an_earlier_manual_duo_config(self):
@@ -499,6 +520,20 @@ class DuoToolsTests(unittest.TestCase):
         self.assertFalse(ours.exists())
         self.assertTrue((self.trashed() / ".claude/skills/duo-send/SKILL.md").exists())
         self.assertEqual((theirs / "SKILL.md").read_text(), "mine\n")
+
+    def test_uninstaller_moves_the_duo_inbox_skill_once_when_skills_are_shared(self):
+        (self.home / ".claude").mkdir()
+        (self.home / ".claude/skills").mkdir()
+        uninstaller = self.uninstall_fixture()  # creates ~/.claude-duo (account data)
+        shared = self.home / ".claude-duo/skills"
+        shared.symlink_to(self.home / ".claude/skills", target_is_directory=True)
+        self.assertEqual(self.run_installer(self.root / "checkout/duo/install-duo.sh", "--no-build").returncode, 0)
+        self.assertTrue((self.home / ".claude/skills/duo-inbox/SKILL.md").exists())  # through the link
+        result = self.uninstall(uninstaller, "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for name in ("duo-send", "duo-inbox"):
+            self.assertFalse((self.home / ".claude/skills" / name).exists(), name)
+            self.assertTrue((self.trashed() / ".claude/skills" / name / "SKILL.md").exists(), name)
 
     def test_uninstaller_keeps_a_duo_send_skill_it_did_not_install(self):
         uninstaller = self.uninstall_fixture()
