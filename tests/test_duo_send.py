@@ -275,6 +275,13 @@ class DuoOpenTests(unittest.TestCase):
         self.assertEqual((scheme, where), ("claude-dev", "code/new"))
         self.assertEqual(query, {"folder": str(self.repo), "q": "fix the tests & push? no", "source": "duo-send"})
 
+    def test_open_reads_a_brief_with_quotes_and_backticks_from_stdin(self):
+        brief = "Fix `make test` in the \"api\" folder.\nDone when CI is green; don't push to main."
+        with mock.patch.object(self.module.sys, "stdin", io.StringIO(brief)):
+            code, _, _ = self.main("open", "--repo", str(self.repo), "--prompt", "-")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.link()[2]["q"], brief)
+
     def test_inbox_open_fills_in_duo_inbox_in_a_new_duo_session(self):
         code, out, _ = self.main("inbox", "--open", "--repo", str(self.repo))
         self.assertEqual(code, 0)

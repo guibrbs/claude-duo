@@ -211,7 +211,8 @@ def open_session(*, folder=None, prompt=None, session=None):
             raise Refused(f"invalid session id (the Duo imports a full UUID): {session!r}")
         return {"ok": True, "link": open_link("resume", [("session", session)])}
     if prompt and len(prompt) > PROMPT_LIMIT:
-        raise Refused(f"the prompt is longer than {PROMPT_LIMIT} characters; use `send` and then `open --session`")
+        raise Refused(f"the prompt is longer than {PROMPT_LIMIT} characters: write the brief to a file in the "
+                      "repository and open with a short prompt that points to it, or use `send --open`")
     params = [("folder", str(repository(folder)))]
     if prompt and prompt.strip():
         params.append(("q", prompt))
